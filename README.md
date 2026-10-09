@@ -14,7 +14,7 @@ Payment and ledger integrations may redeliver requests, deliver events out of or
 | --- | --- |
 | Transaction fields and monetary precision | `model/TransactionRequest.java` uses `BigDecimal`; supported types are `CREDIT` and `DEBIT` in `model/TransactionType.java`. `REVERSAL` is not implemented. |
 | Input validation | Jakarta Bean Validation on request and batch records; negative-amount test in `TransactionProcessingServiceTests`. |
-| Request idempotency | `TransactionProcessingService` stores requests/results by `requestId`; same payload replays, changed payload returns 409. |
+| Request idempotency | `TransactionProcessingService` stores requests/results by `requestId`; same payload replays, while changed-payload reuse in a batch becomes an item-level `FAILED` result and later items continue. |
 | Business transaction deduplication | The service reserves `transactionId`; a later different request becomes `DUPLICATE` without another balance effect. |
 | Out-of-order events | Per-account `TreeMap` queue and sequence cursor in the service; tested by the out-of-order test. |
 | Retry behavior and limit | `ConfiguredTransientFailureSimulator`, `transaction.simulated-failures`, and service `MAX_ATTEMPTS = 3`; retry/exhaustion tests. |
@@ -47,7 +47,7 @@ The original assessment brief requires a `transactionType` field but does not sp
 `-- pom.xml
 ```
 
-Important classes: `TransactionController` owns the HTTP mappings; `TransactionProcessingService` owns request/business ID state, per-account sequencing, background dispatch, results, and balances; `TransactionProcessingConfiguration` creates the four-thread executor; `ConfiguredTransientFailureSimulator` reads the startup retry-failure setting; `TransactionExceptionHandler` maps selected service exceptions to HTTP errors. DTOs and enums are under `model`.
+Important classes: `TransactionController` owns the HTTP mappings; `TransactionProcessingService` owns request/business ID state, per-account sequencing, background dispatch, per-item batch rejection handling, results, and balances; `TransactionProcessingConfiguration` creates the four-thread executor; `ConfiguredTransientFailureSimulator` reads the startup retry-failure setting; `TransactionExceptionHandler` maps exceptions that escape service-level handling to HTTP errors. DTOs and enums are under `model`.
 
 ## Clone, build, test, and run
 
