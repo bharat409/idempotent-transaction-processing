@@ -28,8 +28,9 @@ The original assessment brief requires a `transactionType` field but does not sp
 
 ## Technology and prerequisites
 
-- Java 17 or newer. Maven compilation targets Java 17; use the included wrapper.
+- Java 17 or newer. Maven compilation targets Java 17.
 - Spring Boot 4.1.1, Spring MVC, Jakarta Bean Validation, Maven, and JUnit 5.
+- The included Maven Wrapper is used below, so a separate Maven installation is not required.
 - No database, external queue, credentials, or other service is required.
 
 ## Project structure
@@ -50,28 +51,33 @@ Important classes: `TransactionController` owns the HTTP mappings; `TransactionP
 
 ## Clone, build, test, and run
 
-After creating your own remote repository:
+Clone the repository once:
 
-```powershell
-git clone https://github.com/<YOUR-USERNAME>/<YOUR-REPOSITORY>.git
-Set-Location <YOUR-REPOSITORY>
+```text
+git clone https://github.com/bharat409/idempotent-transaction-processing.git
 ```
 
 On Windows PowerShell:
 
 ```powershell
+Set-Location idempotent-transaction-processing
 java -version
 .\mvnw.cmd clean verify
+.\mvnw.cmd test
 .\mvnw.cmd spring-boot:run
 ```
 
-The application listens at `http://localhost:8080`. To run the packaged jar:
+On macOS/Linux:
 
-```powershell
-java -jar target\fde-transaction-service-0.0.1-SNAPSHOT.jar
+```sh
+cd idempotent-transaction-processing
+java -version
+./mvnw clean verify
+./mvnw test
+./mvnw spring-boot:run
 ```
 
-On macOS/Linux use `./mvnw clean verify` and `./mvnw spring-boot:run`.
+`clean verify` compiles, tests, and packages the application; `test` runs the test suite by itself. The application listens at `http://localhost:8080`. To run the packaged jar on Windows, use `java -jar target\fde-transaction-service-0.0.1-SNAPSHOT.jar`; on macOS/Linux use `java -jar target/fde-transaction-service-0.0.1-SNAPSHOT.jar`.
 
 ## HTTP API
 
@@ -104,9 +110,9 @@ Accepts a non-empty JSON object with a `transactions` array. All fields shown ar
 }
 ```
 
-The response is an acceptance-time snapshot. The first result starts at `RECEIVED`; the second is `PENDING` until the worker advances sequence 1. Poll the result endpoint for completion.
+The batch endpoint returns an acceptance-time snapshot, not a live view. For new entries in one batch, the service lock prevents the background executor from advancing them before that snapshot is assembled: a valid next-sequence transaction is `RECEIVED`, while a future sequence is `PENDING`. Statuses can vary with how quickly background processing starts and advances between requests; for example, replaying an existing request ID returns its current stored result. Background processing may continue after the snapshot is returned. Poll `GET /api/transactions/{requestId}` for the latest status and history.
 
-Illustrative immediate response (derived from the current service flow; not a captured runtime response):
+Illustrative immediate response for this two-entry batch in fresh in-memory state (derived from the current synchronized service flow; not a captured or guaranteed runtime response):
 
 ```json
 {
