@@ -53,7 +53,7 @@ Important classes: `TransactionController` owns the HTTP mappings; `TransactionP
 After creating your own remote repository:
 
 ```powershell
-git clone git clone https://github.com/<YOUR-USERNAME>/<YOUR-REPOSITORY>.git
+git clone https://github.com/<YOUR-USERNAME>/<YOUR-REPOSITORY>.git
 Set-Location <YOUR-REPOSITORY>
 ```
 
