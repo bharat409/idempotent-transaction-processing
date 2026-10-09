@@ -19,6 +19,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.example.fde_transaction_service.model.TransactionRequest;
+import com.example.fde_transaction_service.model.TransactionBatchRequest;
+import com.example.fde_transaction_service.model.TransactionBatchResponse;
 import com.example.fde_transaction_service.model.TransactionResult;
 import com.example.fde_transaction_service.model.TransactionStatus;
 import com.example.fde_transaction_service.model.TransactionType;
@@ -75,6 +77,29 @@ class TransactionProcessingServiceTests {
 		TransactionProcessingService service = service((request, attempt) -> false);
 		assertThrows(InvalidTransactionException.class, () -> service.submit(
 				request("business-1", "request-1", "account-1", TransactionType.CREDIT, "-1.00", 1)));
+	}
+
+	@Test
+	void invalidAndConflictingBatchRecordsDoNotStopLaterTransactions() {
+		TransactionProcessingService service = service((request, attempt) -> false);
+		TransactionBatchResponse response = service.submitBatch(new TransactionBatchRequest(List.of(
+				request("business-credit", "request-credit", "account-1", TransactionType.CREDIT, "100.00", 1),
+				request("business-invalid", "request-invalid", "account-1", TransactionType.DEBIT, "-10.00", 2),
+				request("business-conflict", "request-credit", "account-1", TransactionType.DEBIT, "1.00", 2),
+				request("business-debit", "request-debit", "account-1", TransactionType.DEBIT, "25.00", 2))));
+
+		assertEquals(List.of(
+				TransactionStatus.PROCESSED,
+				TransactionStatus.FAILED,
+				TransactionStatus.FAILED,
+				TransactionStatus.PROCESSED),
+				response.results().stream().map(TransactionResult::status).toList());
+		assertEquals(List.of(TransactionStatus.RECEIVED, TransactionStatus.FAILED),
+				response.results().get(1).statusHistory());
+		assertTrue(response.results().get(2).message().contains("requestId is already associated"));
+		assertEquals(TransactionStatus.FAILED, service.getResult("request-invalid").status());
+		assertEquals(new BigDecimal("75.00"), service.getSummary().accountBalances().get("account-1:USD"));
+		assertEquals(2L, service.getSummary().statusCounts().get(TransactionStatus.FAILED));
 	}
 
 	@Test

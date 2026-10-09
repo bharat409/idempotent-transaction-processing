@@ -23,7 +23,7 @@ flowchart LR
 
 - `TransactionController` maps batch submission, request-result lookup, and processing summary.
 - `TransactionRequest` and `TransactionBatchRequest` define Jakarta Bean Validation constraints. `TransactionResult` returns current status, history, attempt count, message, and request fields.
-- `TransactionProcessingService` owns request/business-ID maps, result state, per-account sequence cursors, pending events, and currency balances. Public mutations and worker processing are synchronized.
+- `TransactionProcessingService` owns request/business-ID maps, result state, per-account sequence cursors, pending events, currency balances, and in-memory batch rejection records. Public mutations and worker processing are synchronized.
 - `TransactionProcessingConfiguration` provides a fixed four-thread executor. Ready work is queued after the service records its initial state.
 - `ConfiguredTransientFailureSimulator` reads `transaction.simulated-failures` at startup and fails a fixed number of initial attempts for every transaction.
 - `TransactionExceptionHandler` maps selected service errors to `ApiError`; Spring MVC handles request-body conversion and validation errors.
@@ -62,9 +62,11 @@ sequenceDiagram
     R-->>C: Result response
 ```
 
+The controller validates the batch envelope (non-empty `transactions` list), while the service validates each parsed item independently. Expected record validation failures and changed-payload request-ID conflicts become per-item `FAILED` results; they do not abort iteration over later items. Malformed JSON and invalid top-level envelopes still fail the complete HTTP request before item processing.
+
 ## Lifecycle and states
 
-An accepted request begins `RECEIVED`. A missing predecessor leaves it `PENDING`. Ready work is queued to the executor and becomes `PROCESSING`. Success becomes `PROCESSED`. Transient simulated failures record `RETRY_PENDING` between attempts; retry exhaustion, insufficient funds, stale sequence, and sequence-slot collision become `FAILED`. A previously reserved business ID under another request ID becomes `DUPLICATE`.
+An accepted request begins `RECEIVED`. A missing predecessor leaves it `PENDING`. Ready work is queued to the executor and becomes `PROCESSING`. Success becomes `PROCESSED`. Transient simulated failures record `RETRY_PENDING` between attempts; retry exhaustion, insufficient funds, stale sequence, sequence-slot collision, record validation errors, and changed-payload request-ID conflicts become `FAILED`. A previously reserved business ID under another request ID becomes `DUPLICATE`.
 
 The `status` field and summary represent the latest state; `statusHistory` captures transitions. The POST response is a snapshot taken before the worker can acquire the service monitor, so a ready event normally returns `RECEIVED`. Poll `GET /api/transactions/{requestId}` for completion. `RETRY_PENDING` is short-lived: attempts run immediately in the same worker invocation, with no delay/backoff.
 
@@ -90,17 +92,19 @@ Insufficient-funds failures and retry exhaustion consume their sequence position
 
 This deterministic simulator is demonstration behavior, not production failure handling. Real retry policies should classify errors, use bounded backoff with jitter, and persist attempts and dead-letter state.
 
+An exhausted transaction remains traceable through its result and status summary while the process is running, but the implementation has no manual retry/recovery endpoint. Restart loses both the failure record and the ability to inspect or recover it.
+
 ## Concurrency, errors, and observability
 
 The executor has four worker threads, but workers contend on one synchronized service state, serializing processing across accounts while the monitor is held. This is simple for the assessment but limits throughput. The ready-sequence occupancy check protects against concurrent submissions overwriting a queued event at the same sequence.
 
-Custom service errors map to HTTP 400 (`InvalidTransactionException`), 404 (`TransactionNotFoundException`), and 409 (`DuplicateRequestIdException`). Malformed JSON and request Bean Validation failures receive HTTP 400 from Spring MVC's default handling. Business outcomes such as insufficient funds are transaction results with status `FAILED`, not HTTP error responses.
+Malformed JSON or invalid top-level batch envelopes receive HTTP 400 from Spring MVC or service handling. Parsed record validation errors and changed-payload request-ID conflicts are isolated into per-item `FAILED` results within the HTTP 200 batch response. Unknown result lookups return HTTP 404. Business outcomes such as insufficient funds are also transaction results with status `FAILED`, not HTTP error responses. Exception-advice mappings for 400/409 remain available if those service exceptions escape another call path.
 
-The API provides status history, attempts, messages, status counts, account count, and balances. There are no transaction-specific application logs, metrics, traces, audit records, or custom health endpoints.
+The API provides status history, attempts, messages, status counts, account count, and balances. Batch rejections are kept in memory and included in the failed count. A validation rejection can be queried when it has a nonblank request ID not already associated with an accepted result; a request-ID conflict remains available in the batch response/summary while lookup returns the original accepted result. A rejection with no usable ID is available only in the batch response and summary. There are no transaction-specific application logs, metrics, traces, audit records, or custom health endpoints; the result and summary APIs are the basic processing report.
 
 ## In-memory trade-offs and restart behavior
 
-The in-memory maps avoid infrastructure and make the behavior easy to demonstrate, but they are volatile and unbounded. Restart loses balances, sequence positions, pending events, idempotency IDs, results, and summary counts. No work is recovered. Separate instances can accept the same IDs and apply the effect independently. Batch submission is not all-or-nothing; earlier entries may have been accepted before a later service-level conflict aborts processing.
+The in-memory maps/lists avoid infrastructure and make the behavior easy to demonstrate, but they are volatile and unbounded. Restart loses balances, sequence positions, pending events, idempotency IDs, results, batch rejections, and summary counts. No work is recovered. Separate instances can accept the same IDs and apply the effect independently. Batch submission is not all-or-nothing; malformed top-level requests or unexpected runtime failures can occur after earlier entries have been accepted.
 
 ## Future production architecture (not implemented)
 
@@ -127,6 +131,7 @@ With that architecture, restart can reload pending work and resume safely. The c
 - Business transaction IDs are globally unique in this process.
 - Only `CREDIT` and `DEBIT` are implemented; `REVERSAL` is not supported. The original assessment brief names the transaction type field but does not define reversal semantics.
 - Tests cover a successful credit followed by a successful debit and the resulting balance, as well as insufficient-funds debit behavior.
+- Parsed record-level validation failures and request-ID payload conflicts return per-item `FAILED` results; malformed JSON and invalid batch envelopes reject the whole HTTP request.
 - Missing sequences are not skipped; failed in-order transactions advance the cursor.
 - HTTP request Bean Validation happens before controller invocation. Batch business processing is not an all-or-nothing transaction.
 - Atomicity/concurrency guarantees apply only inside one running JVM. The database and broker architecture above is a future improvement.

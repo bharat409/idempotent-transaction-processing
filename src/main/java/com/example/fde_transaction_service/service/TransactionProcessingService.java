@@ -35,6 +35,8 @@ public class TransactionProcessingService {
 	private final Executor processingExecutor;
 	private final Map<String, TransactionRequest> requestsById = new HashMap<>();
 	private final Map<String, TransactionResult> resultsByRequestId = new HashMap<>();
+	private final Map<String, TransactionResult> batchRejectionsByRequestId = new HashMap<>();
+	private final List<TransactionResult> batchRejections = new ArrayList<>();
 	private final Map<String, String> requestIdByTransactionId = new HashMap<>();
 	private final Map<String, AccountState> accounts = new HashMap<>();
 
@@ -56,13 +58,21 @@ public class TransactionProcessingService {
 		if (batch == null || batch.transactions() == null || batch.transactions().isEmpty()) {
 			throw new InvalidTransactionException("transactions must contain at least one transaction");
 		}
+		List<TransactionResult> results = new ArrayList<>(batch.transactions().size());
 		for (TransactionRequest request : batch.transactions()) {
-			submit(request);
+			try {
+				results.add(submit(request));
+			} catch (InvalidTransactionException | DuplicateRequestIdException exception) {
+				TransactionResult rejected = rejectedResult(request, exception.getMessage());
+				batchRejections.add(rejected);
+				if (request != null && request.requestId() != null && !request.requestId().isBlank()
+						&& !resultsByRequestId.containsKey(request.requestId())) {
+					batchRejectionsByRequestId.put(request.requestId(), rejected);
+				}
+				results.add(rejected);
+			}
 		}
-		List<TransactionResult> results = batch.transactions().stream()
-				.map(request -> resultsByRequestId.get(request.requestId()))
-				.toList();
-		return new TransactionBatchResponse(results);
+		return new TransactionBatchResponse(List.copyOf(results));
 	}
 
 	public synchronized TransactionResult submit(TransactionRequest request) {
@@ -116,6 +126,9 @@ public class TransactionProcessingService {
 	public synchronized TransactionResult getResult(String requestId) {
 		TransactionResult result = resultsByRequestId.get(requestId);
 		if (result == null) {
+			result = batchRejectionsByRequestId.get(requestId);
+		}
+		if (result == null) {
 			throw new TransactionNotFoundException(requestId);
 		}
 		return result;
@@ -127,6 +140,8 @@ public class TransactionProcessingService {
 			statusCounts.put(status, 0L);
 		}
 		resultsByRequestId.values().forEach(result ->
+				statusCounts.compute(result.status(), (status, count) -> count + 1));
+		batchRejections.forEach(result ->
 				statusCounts.compute(result.status(), (status, count) -> count + 1));
 		Map<String, BigDecimal> balances = new HashMap<>();
 		accounts.forEach((accountId, account) -> account.balancesByCurrency.forEach((currency, balance) ->
@@ -146,6 +161,19 @@ public class TransactionProcessingService {
 					.collect(Collectors.joining("; "));
 			throw new InvalidTransactionException(message);
 		}
+	}
+
+	private TransactionResult rejectedResult(TransactionRequest request, String message) {
+		return new TransactionResult(
+				request == null ? null : request.transactionId(),
+				request == null ? null : request.requestId(),
+				TransactionStatus.FAILED,
+				List.of(TransactionStatus.RECEIVED, TransactionStatus.FAILED),
+				0,
+				message,
+				request == null ? null : request.amount(),
+				request == null ? null : request.currency(),
+				request == null ? 0 : request.sequenceNumber());
 	}
 
 	private void processInSequence(AccountState account, TransactionRequest request) {

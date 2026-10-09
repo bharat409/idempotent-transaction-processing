@@ -72,7 +72,13 @@
         {
           "method": "POST",
           "path": "/api/transactions/batch",
-          "body": {"transactions": [{"transactionId": "txn-invalid-001", "requestId": "req-invalid-001", "accountId": "acct-500", "transactionType": "CREDIT", "amount": -1, "currency": "USD", "sequenceNumber": 1}]}
+          "body": {
+            "transactions": [
+              {"transactionId": "txn-validation-credit", "requestId": "req-validation-credit", "accountId": "acct-500", "transactionType": "CREDIT", "amount": 100, "currency": "USD", "sequenceNumber": 1},
+              {"transactionId": "txn-invalid-001", "requestId": "req-invalid-001", "accountId": "acct-500", "transactionType": "DEBIT", "amount": -1, "currency": "USD", "sequenceNumber": 2},
+              {"transactionId": "txn-validation-debit", "requestId": "req-validation-debit", "accountId": "acct-500", "transactionType": "DEBIT", "amount": 25, "currency": "USD", "sequenceNumber": 2}
+            ]
+          }
         }
       ]
     },
