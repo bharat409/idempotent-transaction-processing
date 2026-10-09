@@ -1,0 +1,59 @@
+{
+  "notice": "Illustrative expected API states derived from the current source. These are not captured application responses or test output. POST is an acceptance-time snapshot; GET results show eventual state after processing completes.",
+  "scenarios": [
+    {
+      "name": "credit-and-debit",
+      "postResponse": {
+        "results": [
+          {"transactionId": "txn-credit-001", "requestId": "req-credit-001", "status": "RECEIVED", "statusHistory": ["RECEIVED"], "attempts": 0, "message": "Transaction received", "amount": 125.5, "currency": "USD", "sequenceNumber": 1},
+          {"transactionId": "txn-debit-002", "requestId": "req-debit-002", "status": "PENDING", "statusHistory": ["RECEIVED", "PENDING"], "attempts": 0, "message": "Waiting for sequence 1", "amount": 25, "currency": "USD", "sequenceNumber": 2}
+        ]
+      },
+      "eventualSummary": {
+        "statusCounts": {"RECEIVED": 0, "PROCESSING": 0, "PROCESSED": 2, "DUPLICATE": 0, "PENDING": 0, "RETRY_PENDING": 0, "FAILED": 0},
+        "accountCount": 1,
+        "accountBalances": {"acct-100:USD": 100.5}
+      }
+    },
+    {
+      "name": "duplicate-business-transaction",
+      "postResponseStatuses": ["RECEIVED", "DUPLICATE"],
+      "duplicateResult": {"transactionId": "txn-duplicate-001", "requestId": "req-duplicate-replay", "status": "DUPLICATE", "statusHistory": ["RECEIVED", "DUPLICATE"], "attempts": 0, "message": "Business transaction has already been submitted", "amount": 40, "currency": "USD", "sequenceNumber": 2},
+      "eventualBalance": {"acct-200:USD": 40}
+    },
+    {
+      "name": "same-request-id-replay",
+      "secondPostSemantics": "Returns the current stored result; it does not queue or apply a second effect. Its status may be RECEIVED or PROCESSED depending on worker timing.",
+      "eventualResult": {"transactionId": "txn-request-replay-001", "requestId": "req-request-replay-001", "status": "PROCESSED", "statusHistory": ["RECEIVED", "PROCESSING", "PROCESSED"], "attempts": 1, "message": "Transaction processed", "amount": 8.25, "currency": "USD", "sequenceNumber": 1},
+      "eventualBalance": {"acct-300:USD": 8.25}
+    },
+    {
+      "name": "out-of-order-sequence",
+      "firstPostResult": {"transactionId": "txn-order-002", "requestId": "req-order-002", "status": "PENDING", "statusHistory": ["RECEIVED", "PENDING"], "attempts": 0, "message": "Waiting for sequence 1", "amount": 2, "currency": "USD", "sequenceNumber": 2},
+      "eventualSequence2Result": {"transactionId": "txn-order-002", "requestId": "req-order-002", "status": "PROCESSED", "statusHistory": ["RECEIVED", "PENDING", "PROCESSING", "PROCESSED"], "attempts": 1, "message": "Transaction processed", "amount": 2, "currency": "USD", "sequenceNumber": 2},
+      "eventualBalance": {"acct-400:USD": 8}
+    },
+    {
+      "name": "negative-amount-validation",
+      "httpStatus": 400,
+      "responseBodyNote": "Rejected by Spring MVC Bean Validation before controller invocation. The default response schema is not customized by this application.",
+      "balanceEffect": "None"
+    },
+    {
+      "name": "transient-failure-then-success",
+      "applicationProperty": "transaction.simulated-failures=1",
+      "eventualResult": {"transactionId": "txn-retry-001", "requestId": "req-retry-001", "status": "PROCESSED", "statusHistory": ["RECEIVED", "PROCESSING", "RETRY_PENDING", "PROCESSING", "PROCESSED"], "attempts": 2, "message": "Transaction processed", "amount": 11.75, "currency": "USD", "sequenceNumber": 1},
+      "eventualBalance": {"acct-600:USD": 11.75}
+    },
+    {
+      "name": "retry-exhaustion",
+      "applicationProperty": "transaction.simulated-failures=3",
+      "eventualResult": {"transactionId": "txn-exhaust-001", "requestId": "req-exhaust-001", "status": "FAILED", "statusHistory": ["RECEIVED", "PROCESSING", "RETRY_PENDING", "PROCESSING", "RETRY_PENDING", "PROCESSING", "FAILED"], "attempts": 3, "message": "Transient failure after maximum attempts", "amount": 99, "currency": "USD", "sequenceNumber": 1},
+      "eventualSummary": {
+        "statusCounts": {"RECEIVED": 0, "PROCESSING": 0, "PROCESSED": 0, "DUPLICATE": 0, "PENDING": 0, "RETRY_PENDING": 0, "FAILED": 1},
+        "accountCount": 1,
+        "accountBalances": {}
+      }
+    }
+  ]
+}

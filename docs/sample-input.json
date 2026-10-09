@@ -1,0 +1,105 @@
+{
+  "notice": "Each scenario is independent and should use fresh application state. calls are real endpoint requests; applicationProperties describes the configuration to use at startup for that scenario.",
+  "scenarios": [
+    {
+      "name": "credit-and-debit",
+      "applicationProperties": {"transaction.simulated-failures": 0},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {
+            "transactions": [
+              {"transactionId": "txn-credit-001", "requestId": "req-credit-001", "accountId": "acct-100", "transactionType": "CREDIT", "amount": 125.5, "currency": "USD", "sequenceNumber": 1},
+              {"transactionId": "txn-debit-002", "requestId": "req-debit-002", "accountId": "acct-100", "transactionType": "DEBIT", "amount": 25, "currency": "USD", "sequenceNumber": 2}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "duplicate-business-transaction",
+      "applicationProperties": {"transaction.simulated-failures": 0},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {
+            "transactions": [
+              {"transactionId": "txn-duplicate-001", "requestId": "req-duplicate-first", "accountId": "acct-200", "transactionType": "CREDIT", "amount": 40, "currency": "USD", "sequenceNumber": 1},
+              {"transactionId": "txn-duplicate-001", "requestId": "req-duplicate-replay", "accountId": "acct-200", "transactionType": "CREDIT", "amount": 40, "currency": "USD", "sequenceNumber": 2}
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "same-request-id-replay",
+      "applicationProperties": {"transaction.simulated-failures": 0},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-request-replay-001", "requestId": "req-request-replay-001", "accountId": "acct-300", "transactionType": "CREDIT", "amount": 8.25, "currency": "USD", "sequenceNumber": 1}]}
+        },
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-request-replay-001", "requestId": "req-request-replay-001", "accountId": "acct-300", "transactionType": "CREDIT", "amount": 8.25, "currency": "USD", "sequenceNumber": 1}]}
+        }
+      ]
+    },
+    {
+      "name": "out-of-order-sequence",
+      "applicationProperties": {"transaction.simulated-failures": 0},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-order-002", "requestId": "req-order-002", "accountId": "acct-400", "transactionType": "DEBIT", "amount": 2, "currency": "USD", "sequenceNumber": 2}]}
+        },
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-order-001", "requestId": "req-order-001", "accountId": "acct-400", "transactionType": "CREDIT", "amount": 10, "currency": "USD", "sequenceNumber": 1}]}
+        }
+      ]
+    },
+    {
+      "name": "negative-amount-validation",
+      "applicationProperties": {"transaction.simulated-failures": 0},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-invalid-001", "requestId": "req-invalid-001", "accountId": "acct-500", "transactionType": "CREDIT", "amount": -1, "currency": "USD", "sequenceNumber": 1}]}
+        }
+      ]
+    },
+    {
+      "name": "transient-failure-then-success",
+      "applicationProperties": {"transaction.simulated-failures": 1},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-retry-001", "requestId": "req-retry-001", "accountId": "acct-600", "transactionType": "CREDIT", "amount": 11.75, "currency": "USD", "sequenceNumber": 1}]}
+        },
+        {"method": "GET", "path": "/api/transactions/req-retry-001"}
+      ]
+    },
+    {
+      "name": "retry-exhaustion",
+      "applicationProperties": {"transaction.simulated-failures": 3},
+      "calls": [
+        {
+          "method": "POST",
+          "path": "/api/transactions/batch",
+          "body": {"transactions": [{"transactionId": "txn-exhaust-001", "requestId": "req-exhaust-001", "accountId": "acct-700", "transactionType": "CREDIT", "amount": 99, "currency": "USD", "sequenceNumber": 1}]}
+        },
+        {"method": "GET", "path": "/api/transactions/req-exhaust-001"},
+        {"method": "GET", "path": "/api/transactions/summary"}
+      ]
+    }
+  ]
+}
