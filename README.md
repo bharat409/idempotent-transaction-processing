@@ -24,7 +24,7 @@ Payment and ledger integrations may redeliver requests, deliver events out of or
 | Atomicity in this process | A synchronized service monitor serializes ID reservation, results, sequence, and balance mutations in one JVM only. |
 | JUnit 5 coverage | `src/test/java/com/example/fde_transaction_service/TransactionProcessingServiceTests.java` and application context test. |
 
-The original assessment brief requires a `transactionType` field but does not specify a `REVERSAL` type. If the assessment rubric expects reversal semantics, that feature and its tests are missing. `DEBIT` is supported in processing, but current tests assert only the insufficient-funds debit path; they do not test a successful debit balance reduction.
+The original assessment brief requires a `transactionType` field but does not specify a `REVERSAL` type. If the assessment rubric expects reversal semantics, that feature and its tests are missing. `CREDIT` and `DEBIT` are supported; tests cover a successful credit followed by a successful debit and the resulting balance, as well as an insufficient-funds debit.
 
 ## Technology and prerequisites
 
@@ -106,7 +106,7 @@ Accepts a non-empty JSON object with a `transactions` array. All fields shown ar
 
 The response is an acceptance-time snapshot. The first result starts at `RECEIVED`; the second is `PENDING` until the worker advances sequence 1. Poll the result endpoint for completion.
 
-Example immediate response:
+Illustrative immediate response (derived from the current service flow; not a captured runtime response):
 
 ```json
 {
@@ -199,7 +199,7 @@ Implemented statuses: `RECEIVED`, `PROCESSING`, `PROCESSED`, `DUPLICATE`, `PENDI
 
 ## Tests
 
-Run `.\mvnw.cmd test` or `.\mvnw.cmd clean verify`. The tests cover duplicate business IDs, request replay/conflict, out-of-order processing, negative amounts, retry success/exhaustion, insufficient funds, asynchronous submission, queue-slot collision, and Spring context startup. The validation test covers a negative amount; null/missing fields, malformed JSON, and HTTP binding/error responses do not have dedicated tests. The focused service tests do not exercise HTTP serialization or persistence.
+Run `.\mvnw.cmd test` or `.\mvnw.cmd clean verify`. The tests cover duplicate business IDs, request replay/conflict, out-of-order processing, negative amounts, retry success/exhaustion, successful credit followed by debit with a final-balance assertion, insufficient funds, stale/conflicting sequence ID reservation, asynchronous submission, queue-slot collision, and Spring context startup. The validation test covers a negative amount; null/missing fields, malformed JSON, and HTTP binding/error responses do not have dedicated tests. The focused service tests do not exercise HTTP serialization or persistence.
 
 ## Limitations, assumptions, and production hardening
 

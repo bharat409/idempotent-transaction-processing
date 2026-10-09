@@ -126,7 +126,7 @@ With that architecture, restart can reload pending work and resume safely. The c
 - Currency validation checks only `[A-Z]{3}`; no ISO registry, scale, or rounding is applied.
 - Business transaction IDs are globally unique in this process.
 - Only `CREDIT` and `DEBIT` are implemented; `REVERSAL` is not supported. The original assessment brief names the transaction type field but does not define reversal semantics.
-- A successful debit balance reduction is not covered by the current tests; insufficient-funds debit behavior is covered.
+- Tests cover a successful credit followed by a successful debit and the resulting balance, as well as insufficient-funds debit behavior.
 - Missing sequences are not skipped; failed in-order transactions advance the cursor.
 - HTTP request Bean Validation happens before controller invocation. Batch business processing is not an all-or-nothing transaction.
 - Atomicity/concurrency guarantees apply only inside one running JVM. The database and broker architecture above is a future improvement.

@@ -113,6 +113,34 @@ class TransactionProcessingServiceTests {
 	}
 
 	@Test
+	void successfulCreditFollowedByDebitUpdatesFinalBalance() {
+		TransactionProcessingService service = service((request, attempt) -> false);
+		TransactionResult credit = service.submit(
+				request("business-credit", "request-credit", "account-1", TransactionType.CREDIT, "100.00", 1));
+		TransactionResult debit = service.submit(
+				request("business-debit", "request-debit", "account-1", TransactionType.DEBIT, "25.00", 2));
+
+		assertEquals(TransactionStatus.PROCESSED, credit.status());
+		assertEquals(TransactionStatus.PROCESSED, debit.status());
+		assertEquals(new BigDecimal("75.00"), service.getSummary().accountBalances().get("account-1:USD"));
+	}
+
+	@Test
+	void staleSequenceFailureStillReservesTransactionId() {
+		TransactionProcessingService service = service((request, attempt) -> false);
+		service.submit(request("business-first", "request-first", "account-1", TransactionType.CREDIT, "10.00", 1));
+
+		TransactionResult stale = service.submit(
+				request("business-stale", "request-stale", "account-1", TransactionType.CREDIT, "3.00", 1));
+		TransactionResult correctedRetry = service.submit(
+				request("business-stale", "request-corrected", "account-1", TransactionType.CREDIT, "3.00", 2));
+
+		assertEquals(TransactionStatus.FAILED, stale.status());
+		assertEquals(TransactionStatus.DUPLICATE, correctedRetry.status());
+		assertEquals(new BigDecimal("10.00"), service.getSummary().accountBalances().get("account-1:USD"));
+	}
+
+	@Test
 	void duplicateRequestIdIsIdempotentOnlyForSamePayload() {
 		TransactionProcessingService service = service((request, attempt) -> false);
 		TransactionRequest original = request(
@@ -180,8 +208,11 @@ class TransactionProcessingServiceTests {
 
 		TransactionResult collision = service.submit(
 				request("business-2", "request-2", "account-1", TransactionType.CREDIT, "30.00", 1));
+		TransactionResult correctedRetry = service.submit(
+				request("business-2", "request-3", "account-1", TransactionType.CREDIT, "30.00", 2));
 		assertEquals(TransactionStatus.RECEIVED, accepted.status());
 		assertEquals(TransactionStatus.FAILED, collision.status());
+		assertEquals(TransactionStatus.DUPLICATE, correctedRetry.status());
 
 		queuedTasks.get(0).run();
 		assertEquals(TransactionStatus.PROCESSED, service.getResult("request-1").status());
