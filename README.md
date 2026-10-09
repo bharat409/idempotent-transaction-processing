@@ -1,22 +1,7 @@
-# FDE Transaction Service
+# idempotent-transaction-processing
 
-A Java 17 / Spring Boot REST service that processes ordered account transactions with request idempotency, business-transaction deduplication, transient retries, and an in-memory processing summary.
+Java Spring Boot service for idempotent background transaction processing
 
-## Requirements
-
-- Java 17
-- Maven (or the included Maven wrapper)
-
-## Run and test
-
-On Windows:
-
-```powershell
-.\mvnw.cmd test
-.\mvnw.cmd spring-boot:run
-```
-
-On macOS or Linux:
 # Idempotent Background Transaction Processing Service
 
 A Java 17-compatible Spring Boot application that accepts transaction batches, queues ready events for background processing, and demonstrates request idempotency, business-transaction deduplication, per-account sequence ordering, transient retry simulation, and in-memory balance updates. This is an assessment/demo implementation, not a durable or distributed financial ledger.
