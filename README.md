@@ -1,8 +1,6 @@
 # idempotent-transaction-processing
 
-Java Spring Boot service for idempotent background transaction processing
-
-# Idempotent Background Transaction Processing Service
+## Idempotent Background Transaction Processing Service
 
 A Java 17-compatible Spring Boot application that accepts transaction batches, queues ready events for background processing, and demonstrates request idempotency, business-transaction deduplication, per-account sequence ordering, transient retry simulation, and in-memory balance updates. This is an assessment/demo implementation, not a durable or distributed financial ledger.
 
@@ -14,7 +12,7 @@ Payment and ledger integrations may redeliver requests, deliver events out of or
 
 | Requirement | Implementation / evidence |
 | --- | --- |
-| Transaction fields and monetary precision | `model/TransactionRequest.java` uses `BigDecimal`; type is `model/TransactionType.java`. |
+| Transaction fields and monetary precision | `model/TransactionRequest.java` uses `BigDecimal`; supported types are `CREDIT` and `DEBIT` in `model/TransactionType.java`. `REVERSAL` is not implemented. |
 | Input validation | Jakarta Bean Validation on request and batch records; negative-amount test in `TransactionProcessingServiceTests`. |
 | Request idempotency | `TransactionProcessingService` stores requests/results by `requestId`; same payload replays, changed payload returns 409. |
 | Business transaction deduplication | The service reserves `transactionId`; a later different request becomes `DUPLICATE` without another balance effect. |
@@ -25,6 +23,8 @@ Payment and ledger integrations may redeliver requests, deliver events out of or
 | REST endpoints and summary | `controller/TransactionController.java`; service returns results and current account summary. |
 | Atomicity in this process | A synchronized service monitor serializes ID reservation, results, sequence, and balance mutations in one JVM only. |
 | JUnit 5 coverage | `src/test/java/com/example/fde_transaction_service/TransactionProcessingServiceTests.java` and application context test. |
+
+The original assessment brief requires a `transactionType` field but does not specify a `REVERSAL` type. If the assessment rubric expects reversal semantics, that feature and its tests are missing. `DEBIT` is supported in processing, but current tests assert only the insufficient-funds debit path; they do not test a successful debit balance reduction.
 
 ## Technology and prerequisites
 
@@ -187,6 +187,8 @@ Invalid JSON or request-body Bean Validation failures return HTTP 400 using Spri
 
 `requestId` identifies the API submission. An equal replay returns the stored/current result; reusing it with a different record payload returns 409. Record equality includes `BigDecimal.equals`, so scale differs (`1.0` and `1.00` are unequal). `transactionId` identifies the business effect and is globally unique in this process. Another request ID with an already-seen business ID becomes `DUPLICATE` and is not queued for a second balance update.
 
+The service reserves `transactionId` after request validation but before checking the account sequence. Therefore, a valid request that later fails because its sequence is stale or already occupied still reserves that business ID. Replaying the same request ID/payload returns its stored `FAILED` result; submitting a corrected sequence under a different request ID is treated as `DUPLICATE`. This is current implementation behavior, not a durable idempotency policy.
+
 Sequence numbers are positive, contiguous, account-wide, and start at 1 for each account. Currency balances are separate. A future sequence is retained as `PENDING`; missing numbers are never automatically skipped. When the next sequence arrives, the worker processes it and drains contiguous pending events. Insufficient-funds failures and retry exhaustion consume their sequence position, allowing later events to proceed. A duplicate business transaction is not queued and consumes no sequence position. A different event competing for an occupied sequence fails without replacing the queued event.
 
 The four-thread executor processes ready events. State mutation is still protected by a single service monitor, serializing transactions across accounts. `transaction.simulated-failures` defaults to `0`; `1` fails the first attempt then succeeds, and `3` exhausts all three attempts. The setting applies to each transaction and is read at startup. Retries are immediate within the worker loop, not delayed; `RETRY_PENDING` appears in `statusHistory` between attempts. Exhaustion yields `FAILED`, preserves the balance, and advances the sequence.
@@ -197,7 +199,7 @@ Implemented statuses: `RECEIVED`, `PROCESSING`, `PROCESSED`, `DUPLICATE`, `PENDI
 
 ## Tests
 
-Run `.\mvnw.cmd test` or `.\mvnw.cmd clean verify`. The tests cover duplicate business IDs, request replay/conflict, out-of-order processing, negative amounts, retry success/exhaustion, insufficient funds, asynchronous submission, queue-slot collision, and Spring context startup. The focused service tests do not exercise HTTP serialization or persistence.
+Run `.\mvnw.cmd test` or `.\mvnw.cmd clean verify`. The tests cover duplicate business IDs, request replay/conflict, out-of-order processing, negative amounts, retry success/exhaustion, insufficient funds, asynchronous submission, queue-slot collision, and Spring context startup. The validation test covers a negative amount; null/missing fields, malformed JSON, and HTTP binding/error responses do not have dedicated tests. The focused service tests do not exercise HTTP serialization or persistence.
 
 ## Limitations, assumptions, and production hardening
 

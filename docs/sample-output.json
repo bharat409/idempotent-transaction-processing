@@ -1,5 +1,5 @@
 {
-  "notice": "Illustrative expected API states derived from the current source. These are not captured application responses or test output. POST is an acceptance-time snapshot; GET results show eventual state after processing completes.",
+  "notice": "Illustrative expected API states derived from the current source. These are not captured application responses or test output. POST is an acceptance-time snapshot; GET results show eventual state after processing completes. Only CREDIT and DEBIT are implemented; REVERSAL is not supported.",
   "scenarios": [
     {
       "name": "credit-and-debit",

@@ -74,6 +74,8 @@ The `status` field and summary represent the latest state; `statusHistory` captu
 
 `transactionId` identifies the business effect. It is globally reserved in the current process, not scoped per account. A different `requestId` with an existing transaction ID receives `DUPLICATE` and is not placed on the account queue. That prevents a second balance effect during the current process lifetime.
 
+The reservation is recorded after request validation and before account sequence checks. A request that is subsequently marked `FAILED` for a stale or occupied sequence still reserves its `transactionId`; retrying the corrected event with another request ID will therefore return `DUPLICATE`. Replaying the original request ID and equal payload returns the stored failed result. This ordering is a limitation of the current implementation and should be revisited for a production correction/replay policy.
+
 Synchronized service methods serialize the in-memory reservation, result update, account sequencing, and balance mutation against other threads in this JVM. This is not an ACID transaction: process failure can erase state, and multiple instances do not share a lock or ID registry.
 
 ## Sequence handling
@@ -123,6 +125,8 @@ With that architecture, restart can reload pending work and resume safely. The c
 - Zero amount is accepted; negative amount is rejected.
 - Currency validation checks only `[A-Z]{3}`; no ISO registry, scale, or rounding is applied.
 - Business transaction IDs are globally unique in this process.
+- Only `CREDIT` and `DEBIT` are implemented; `REVERSAL` is not supported. The original assessment brief names the transaction type field but does not define reversal semantics.
+- A successful debit balance reduction is not covered by the current tests; insufficient-funds debit behavior is covered.
 - Missing sequences are not skipped; failed in-order transactions advance the cursor.
 - HTTP request Bean Validation happens before controller invocation. Batch business processing is not an all-or-nothing transaction.
 - Atomicity/concurrency guarantees apply only inside one running JVM. The database and broker architecture above is a future improvement.

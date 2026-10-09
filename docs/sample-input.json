@@ -1,5 +1,5 @@
 {
-  "notice": "Each scenario is independent and should use fresh application state. calls are real endpoint requests; applicationProperties describes the configuration to use at startup for that scenario.",
+  "notice": "Each scenario is independent and should use fresh application state. calls are real endpoint requests; applicationProperties describes the configuration to use at startup for that scenario. The implementation supports CREDIT and DEBIT only; REVERSAL is not implemented.",
   "scenarios": [
     {
       "name": "credit-and-debit",
